@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import './App.css'
 
 type Suit = 'spades' | 'hearts' | 'diamonds' | 'clubs'
@@ -9,6 +10,12 @@ interface CardData {
   faceDown?: boolean
 }
 
+interface ApiCard {
+  code: string
+  suit: string
+  value: string
+}
+
 const SUIT_SYMBOLS: Record<Suit, string> = {
   spades: '♠',
   hearts: '♥',
@@ -18,16 +25,22 @@ const SUIT_SYMBOLS: Record<Suit, string> = {
 
 const RED_SUITS: Suit[] = ['hearts', 'diamonds']
 
-const DEALER_CARDS: CardData[] = [
-  { rank: 'A', suit: 'spades' },
-  { rank: 'K', suit: 'hearts', faceDown: true },
-]
+const VALUE_TO_RANK: Record<string, Rank> = {
+  ACE: 'A',
+  KING: 'K',
+  QUEEN: 'Q',
+  JACK: 'J',
+  '2': '2', '3': '3', '4': '4', '5': '5',
+  '6': '6', '7': '7', '8': '8', '9': '9', '10': '10',
+}
 
-const PLAYER_CARDS: CardData[] = [
-  { rank: '7', suit: 'hearts' },
-  { rank: '6', suit: 'clubs' },
-  { rank: '3', suit: 'diamonds' },
-]
+function toCardData(apiCard: ApiCard, faceDown = false): CardData {
+  return {
+    rank: VALUE_TO_RANK[apiCard.value] ?? '2',
+    suit: apiCard.suit.toLowerCase() as Suit,
+    faceDown,
+  }
+}
 
 function PlayingCard({ card }: { card: CardData }) {
   if (card.faceDown) {
@@ -89,7 +102,6 @@ function HandSection({
   )
 }
 
-
 function AiRecommendBar({ action }: { action: string }) {
   return (
     <div style={styles.aiBar}>
@@ -101,36 +113,81 @@ function AiRecommendBar({ action }: { action: string }) {
   )
 }
 
-const ACTIONS = ['HIT', 'STAND', 'DOUBLE', 'SPLIT']
+function cardValue(rank: Rank): number {
+  if (['K', 'Q', 'J'].includes(rank)) return 10
+  if (rank === 'A') return 11
+  return parseInt(rank, 10)
+}
 
-function ActionButtons() {
-  return (
-    <div style={styles.actionsRow}>
-      {ACTIONS.map((action) => (
-        <button key={action} style={styles.actionBtn}>
-          {action}
-        </button>
-      ))}
-    </div>
-  )
+function handScore(cards: CardData[]): number {
+  const visible = cards.filter((c) => !c.faceDown)
+  let total = visible.reduce((sum, c) => sum + cardValue(c.rank), 0)
+  let aces = visible.filter((c) => c.rank === 'A').length
+  while (total > 21 && aces > 0) {
+    total -= 10
+    aces--
+  }
+  return total
 }
 
 export default function App() {
+  const [playerCards, setPlayerCards] = useState<CardData[]>([])
+  const [dealerCards, setDealerCards] = useState<CardData[]>([])
+  const [loading, setLoading] = useState(false)
+
+  async function startNewGame() {
+    setLoading(true)
+    try {
+      const res = await fetch('http://localhost:8000/game/new', { method: 'POST' })
+      const data = await res.json()
+      setPlayerCards(data.player_cards.map((c: ApiCard) => toCardData(c)))
+      setDealerCards([
+        toCardData(data.dealer_cards[0]),
+        toCardData(data.dealer_cards[1], true),
+      ])
+    } catch (err) {
+      console.error('Failed to start game:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    startNewGame()
+  }, [])
+
+  const playerScore = handScore(playerCards)
+  const dealerScore = handScore(dealerCards)
+
   return (
     <div style={styles.root}>
       <h1 style={styles.title}>Blackjack AI</h1>
 
       <div style={styles.table}>
-        <HandSection label="DEALER" cards={DEALER_CARDS} score={11} />
+          {loading ? (
+            <div style={styles.loadingText}>Dealing cards...</div>
+          ) : (
+            <>
+              <HandSection label="DEALER" cards={dealerCards} score={dealerScore} />
 
-        <div style={styles.divider} />
+              <div style={styles.divider} />
 
-        <HandSection label="PLAYER" cards={PLAYER_CARDS} score={16} />
+              <HandSection label="PLAYER" cards={playerCards} score={playerScore} />
 
-        <AiRecommendBar action="HIT" />
+              <AiRecommendBar action="HIT" />
 
-        <ActionButtons />
-      </div>
+              <div style={styles.actionsRow}>
+                <button style={styles.actionBtn} onClick={() => alert('Not implemented yet')}>
+                  HIT
+                </button>
+                <button style={styles.actionBtn} onClick={() => alert('Not implemented yet')}>
+                  STAND
+                </button>
+              </div>
+
+            </>
+          )}
+        </div>
     </div>
   )
 }
@@ -147,6 +204,13 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '32px',
   },
 
+  tableWrapper: {
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: '20px',
+  },
+
   title: {
     fontFamily: 'Georgia, "Times New Roman", serif',
     fontSize: '2.6rem',
@@ -156,6 +220,7 @@ const styles: Record<string, React.CSSProperties> = {
     textShadow: '0 2px 12px rgba(212,168,67,0.25)',
   },
 
+
   table: {
     display: 'flex',
     flexDirection: 'column',
@@ -163,6 +228,13 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '28px',
     width: '100%',
     maxWidth: '480px',
+  },
+
+  loadingText: {
+    fontFamily: '"Courier New", Courier, monospace',
+    fontSize: '0.85rem',
+    color: 'rgba(255,255,255,0.45)',
+    letterSpacing: '0.15em',
   },
 
   handSection: {
@@ -327,5 +399,20 @@ const styles: Record<string, React.CSSProperties> = {
     textTransform: 'uppercase',
     cursor: 'pointer',
     transition: 'border-color 0.15s, background 0.15s',
+  },
+
+  newGameBtn: {
+    width: '100%',
+    padding: '10px',
+    background: 'rgba(0,0,0,0.5)',
+    border: '1px solid rgba(0,0,0,0.6)',
+    borderRadius: '8px',
+    color: 'rgba(255,255,255,0.35)',
+    fontFamily: '"Courier New", Courier, monospace',
+    fontSize: '0.62rem',
+    fontWeight: '600',
+    letterSpacing: '0.15em',
+    textTransform: 'uppercase',
+    cursor: 'pointer',
   },
 }
