@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import './App.css'
 
 type Suit = 'spades' | 'hearts' | 'diamonds' | 'clubs'
@@ -9,6 +10,11 @@ interface CardData {
   faceDown?: boolean
 }
 
+interface ApiCard {
+  value: string
+  suit: string
+}
+
 const SUIT_SYMBOLS: Record<Suit, string> = {
   spades: '♠',
   hearts: '♥',
@@ -18,16 +24,34 @@ const SUIT_SYMBOLS: Record<Suit, string> = {
 
 const RED_SUITS: Suit[] = ['hearts', 'diamonds']
 
-const DEALER_CARDS: CardData[] = [
-  { rank: 'A', suit: 'spades' },
-  { rank: 'K', suit: 'hearts', faceDown: true },
-]
+const CARD_VALUES: Record<string, number> = {
+  A: 11, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7,
+  '8': 8, '9': 9, '10': 10, J: 10, Q: 10, K: 10,
+}
 
-const PLAYER_CARDS: CardData[] = [
-  { rank: '7', suit: 'hearts' },
-  { rank: '6', suit: 'clubs' },
-  { rank: '3', suit: 'diamonds' },
-]
+function mapApiCard(apiCard: ApiCard): CardData {
+  const rankMap: Record<string, Rank> = {
+    ACE: 'A', JACK: 'J', QUEEN: 'Q', KING: 'K',
+  }
+  const rank = (rankMap[apiCard.value] ?? apiCard.value) as Rank
+  const suit = apiCard.suit.toLowerCase() as Suit
+  return { rank, suit }
+}
+
+function calcScore(cards: CardData[]): number {
+  let total = 0
+  let aces = 0
+  for (const card of cards) {
+    if (card.faceDown) continue
+    total += CARD_VALUES[card.rank]
+    if (card.rank === 'A') aces++
+  }
+  while (total > 21 && aces > 0) {
+    total -= 10
+    aces--
+  }
+  return total
+}
 
 function PlayingCard({ card }: { card: CardData }) {
   if (card.faceDown) {
@@ -89,7 +113,6 @@ function HandSection({
   )
 }
 
-
 function AiRecommendBar({ action }: { action: string }) {
   return (
     <div style={styles.aiBar}>
@@ -101,35 +124,85 @@ function AiRecommendBar({ action }: { action: string }) {
   )
 }
 
-const ACTIONS = ['HIT', 'STAND', 'DOUBLE', 'SPLIT']
-
-function ActionButtons() {
+function ActionButtons({ onNewGame }: { onNewGame: () => void }) {
   return (
-    <div style={styles.actionsRow}>
-      {ACTIONS.map((action) => (
-        <button key={action} style={styles.actionBtn}>
-          {action}
+    <div style={styles.actionsCol}>
+      <div style={styles.actionsRow}>
+        <button
+          style={styles.actionBtn}
+          onClick={() => alert('Not implemented yet')}
+        >
+          HIT
         </button>
-      ))}
+        <button
+          style={styles.actionBtn}
+          onClick={() => alert('Not implemented yet')}
+        >
+          STAND
+        </button>
+      </div>
+      <button style={styles.newGameBtn} onClick={onNewGame}>
+        NEW GAME
+      </button>
     </div>
   )
 }
 
 export default function App() {
+  const [playerCards, setPlayerCards] = useState<CardData[]>([])
+  const [dealerCards, setDealerCards] = useState<CardData[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function startNewGame() {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('http://localhost:8000/game/new', { method: 'POST' })
+      if (!res.ok) throw new Error(`Server error: ${res.status}`)
+      const data = await res.json()
+      const pCards = (data.player_cards as ApiCard[]).map(mapApiCard)
+      const dCards = (data.dealer_cards as ApiCard[]).map((c, i) =>
+        i === 1 ? { ...mapApiCard(c), faceDown: true } : mapApiCard(c)
+      )
+      setPlayerCards(pCards)
+      setDealerCards(dCards)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    startNewGame()
+  }, [])
+
+  const playerScore = calcScore(playerCards)
+  const dealerScore = calcScore(dealerCards)
+
   return (
     <div style={styles.root}>
       <h1 style={styles.title}>Blackjack AI</h1>
 
+      {error && <div style={styles.errorBanner}>{error}</div>}
+
       <div style={styles.table}>
-        <HandSection label="DEALER" cards={DEALER_CARDS} score={11} />
+        {loading ? (
+          <div style={styles.loadingText}>Dealing cards...</div>
+        ) : (
+          <>
+            <HandSection label="DEALER" cards={dealerCards} score={dealerScore} />
 
-        <div style={styles.divider} />
+            <div style={styles.divider} />
 
-        <HandSection label="PLAYER" cards={PLAYER_CARDS} score={16} />
+            <HandSection label="PLAYER" cards={playerCards} score={playerScore} />
 
-        <AiRecommendBar action="HIT" />
+            <AiRecommendBar action="HIT" />
 
-        <ActionButtons />
+            <ActionButtons onNewGame={startNewGame} />
+          </>
+        )}
       </div>
     </div>
   )
@@ -307,6 +380,13 @@ const styles: Record<string, React.CSSProperties> = {
     letterSpacing: '0.25em',
   },
 
+  actionsCol: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+    width: '100%',
+  },
+
   actionsRow: {
     display: 'flex',
     gap: '10px',
@@ -327,5 +407,40 @@ const styles: Record<string, React.CSSProperties> = {
     textTransform: 'uppercase',
     cursor: 'pointer',
     transition: 'border-color 0.15s, background 0.15s',
+  },
+
+  newGameBtn: {
+    width: '100%',
+    padding: '12px 4px',
+    background: 'rgba(212,168,67,0.15)',
+    border: '1px solid rgba(212,168,67,0.7)',
+    borderRadius: '8px',
+    color: '#d4a843',
+    fontFamily: '"Courier New", Courier, monospace',
+    fontSize: '0.68rem',
+    fontWeight: '700',
+    letterSpacing: '0.18em',
+    textTransform: 'uppercase',
+    cursor: 'pointer',
+  },
+
+  loadingText: {
+    fontFamily: '"Courier New", Courier, monospace',
+    fontSize: '0.9rem',
+    color: 'rgba(255,255,255,0.5)',
+    letterSpacing: '0.15em',
+  },
+
+  errorBanner: {
+    background: 'rgba(220,38,38,0.15)',
+    border: '1px solid rgba(220,38,38,0.5)',
+    borderRadius: '8px',
+    padding: '10px 20px',
+    color: '#f87171',
+    fontFamily: '"Courier New", Courier, monospace',
+    fontSize: '0.75rem',
+    maxWidth: '480px',
+    width: '100%',
+    textAlign: 'center',
   },
 }
