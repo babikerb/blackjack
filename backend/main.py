@@ -14,6 +14,12 @@ app.add_middleware(
 CARD_API = "https://deckofcardsapi.com/api/deck"
 
 
+@app.post("/game/hit")
+def hit(deck_id: str):
+    drawn = requests.get(f"{CARD_API}/{deck_id}/draw/?count=1").json()
+    return {"card": drawn["cards"][0]}
+
+
 @app.post("/game/new")
 def new_game():
     deck = requests.get(f"{CARD_API}/new/shuffle/?deck_count=1").json()

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import './App.css'
 
 type Suit = 'spades' | 'hearts' | 'diamonds' | 'clubs'
@@ -36,6 +36,14 @@ function mapApiCard(apiCard: ApiCard): CardData {
   const rank = (rankMap[apiCard.value] ?? apiCard.value) as Rank
   const suit = apiCard.suit.toLowerCase() as Suit
   return { rank, suit }
+}
+
+const TEN_VALUE_RANKS: Rank[] = ['10', 'J', 'Q', 'K']
+
+function isNaturalBlackjack(cards: CardData[]): boolean {
+  if (cards.length !== 2) return false
+  const ranks = cards.map(c => c.rank)
+  return ranks.includes('A') && ranks.some(r => TEN_VALUE_RANKS.includes(r))
 }
 
 function calcScore(cards: CardData[]): number {
@@ -113,30 +121,49 @@ function HandSection({
   )
 }
 
-function AiRecommendBar({ action }: { action: string }) {
+type BarMode = 'rec' | 'blackjack' | 'lost'
+
+function AiRecommendBar({ action, mode }: { action: string; mode: BarMode }) {
+  const accentColor = mode === 'lost' ? '#ef4444' : '#d4a843'
+  const borderColor = mode === 'lost' ? 'rgba(239,68,68,0.5)' : 'rgba(212,168,67,0.5)'
+  const bgColor = mode === 'lost' ? 'rgba(239,68,68,0.08)' : 'rgba(0,0,0,0.3)'
+
+  const label = mode === 'rec' ? 'AI RECOMMENDATION' : null
+  const content = mode === 'blackjack' ? 'BLACKJACK' : mode === 'lost' ? 'BUST' : action
+
   return (
-    <div style={styles.aiBar}>
+    <div style={{ ...styles.aiBar, borderColor, background: bgColor }}>
       <span style={styles.aiBarText}>
-        AI RECOMMENDS{' '}
-        <span style={styles.aiBarAction}>{action}</span>
+        {label && <>{label}{' '}</>}
+        <span style={{ ...styles.aiBarAction, color: accentColor }}>{content}</span>
       </span>
     </div>
   )
 }
 
-function ActionButtons({ onNewGame }: { onNewGame: () => void }) {
+function ActionButtons({
+  onHit,
+  onNewGame,
+  disabled,
+}: {
+  onHit: () => void
+  onNewGame: () => void
+  disabled: boolean
+}) {
   return (
     <div style={styles.actionsCol}>
       <div style={styles.actionsRow}>
         <button
-          style={styles.actionBtn}
-          onClick={() => alert('Not implemented yet')}
+          style={{ ...styles.actionBtn, opacity: disabled ? 0.4 : 1 }}
+          onClick={onHit}
+          disabled={disabled}
         >
           HIT
         </button>
         <button
-          style={styles.actionBtn}
+          style={{ ...styles.actionBtn, opacity: disabled ? 0.4 : 1 }}
           onClick={() => alert('Not implemented yet')}
+          disabled={disabled}
         >
           STAND
         </button>
@@ -151,22 +178,28 @@ function ActionButtons({ onNewGame }: { onNewGame: () => void }) {
 export default function App() {
   const [playerCards, setPlayerCards] = useState<CardData[]>([])
   const [dealerCards, setDealerCards] = useState<CardData[]>([])
+  const [deckId, setDeckId] = useState<string | null>(null)
+  const [gameOver, setGameOver] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const initialized = useRef(false)
 
   async function startNewGame() {
     setLoading(true)
     setError(null)
+    setGameOver(null)
     try {
       const res = await fetch('http://localhost:8000/game/new', { method: 'POST' })
       if (!res.ok) throw new Error(`Server error: ${res.status}`)
       const data = await res.json()
+      setDeckId(data.deck_id)
       const pCards = (data.player_cards as ApiCard[]).map(mapApiCard)
       const dCards = (data.dealer_cards as ApiCard[]).map((c, i) =>
         i === 1 ? { ...mapApiCard(c), faceDown: true } : mapApiCard(c)
       )
       setPlayerCards(pCards)
       setDealerCards(dCards)
+      if (isNaturalBlackjack(pCards)) setGameOver('Blackjack!') // natural blackjack is an A + any other 10 value card in the initial deal
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -174,7 +207,26 @@ export default function App() {
     }
   }
 
+  async function hit() {
+    if (!deckId) return
+    try {
+      const res = await fetch(`http://localhost:8000/game/hit?deck_id=${deckId}`, { method: 'POST' })
+      if (!res.ok) throw new Error(`Server error: ${res.status}`)
+      const data = await res.json()
+      const newCard = mapApiCard(data.card as ApiCard)
+      const updated = [...playerCards, newCard]
+      setPlayerCards(updated)
+      const score = calcScore(updated)
+      if (score > 21) setGameOver('BUST You lose!')
+      else if (score === 21) setGameOver('21')
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
   useEffect(() => {
+    if (initialized.current) return
+    initialized.current = true
     startNewGame()
   }, [])
 
@@ -198,9 +250,20 @@ export default function App() {
 
             <HandSection label="PLAYER" cards={playerCards} score={playerScore} />
 
-            <AiRecommendBar action="HIT" />
+            <AiRecommendBar
+              action="HIT"
+              mode={
+                gameOver === 'Blackjack!' ? 'blackjack'
+                : gameOver === 'BUST You lose!' ? 'lost'
+                : 'rec'
+              }
+            />
 
-            <ActionButtons onNewGame={startNewGame} />
+            <ActionButtons
+              onHit={hit}
+              onNewGame={startNewGame}
+              disabled={gameOver !== null}
+            />
           </>
         )}
       </div>
@@ -218,6 +281,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'center',
     padding: '32px 16px',
     gap: '32px',
+    overflowX: 'hidden',
   },
 
   title: {
@@ -244,6 +308,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: '14px',
     width: '100%',
+    overflowX: 'auto',
   },
 
   handLabel: {
@@ -356,8 +421,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   aiBar: {
-    width: '100%',
-    padding: '12px 20px',
+    padding: '12px 28px',
     border: '1px solid rgba(212,168,67,0.5)',
     borderRadius: '8px',
     background: 'rgba(0,0,0,0.3)',
@@ -384,17 +448,16 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     gap: '10px',
-    width: '100%',
+    alignItems: 'center',
   },
 
   actionsRow: {
     display: 'flex',
     gap: '10px',
-    width: '100%',
   },
 
   actionBtn: {
-    flex: 1,
+    width: '120px',
     padding: '12px 4px',
     background: 'transparent',
     border: '1px solid rgba(212,168,67,0.45)',
@@ -410,7 +473,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   newGameBtn: {
-    width: '100%',
+    width: '250px',
     padding: '12px 4px',
     background: 'rgba(212,168,67,0.15)',
     border: '1px solid rgba(212,168,67,0.7)',
