@@ -121,19 +121,22 @@ function HandSection({
   )
 }
 
-type BarMode = 'rec' | 'p lost' | 'p win' | 'pb win' | 'pb lost' | 'tied'
+type BarMode = 'rec' | 'win' | 'lose' | 'bust' | 'tied' | 'blackjack'
 
 function AiRecommendBar({ action, mode }: { action: string; mode: BarMode }) {
-  const accentColor = mode === 'p lost' ? '#ef4444' : mode === 'pb lost' ? '#ef4444' 
-  : mode === 'p win' ? '#4edd79' : mode === 'pb win' ? '#4edd79' : mode === 'tied' ? '#b1b1b1' : '#d4a843'
-  const borderColor = mode === 'p lost' ? 'rgba(239,68,68,0.5)' : mode === 'pb lost' ? 'rgba(239,68,68,0.5)' 
-  : mode === 'p win' ? '#31864b' : mode === 'pb win' ? '#31864b' : mode === 'tied' ? '#4e4e4e' : 'rgba(212,168,67,0.5)'
-  const bgColor = mode === 'p lost' ? 'rgba(239,68,68,0.08)' : mode === 'pb lost' ? 'rgba(239,68,68,0.08)' 
-  : mode === 'p win' ? '#0d2414' : mode === 'pb win' ? '#0d2414' : mode === 'tied' ? '#141414' : 'rgba(0,0,0,0.3)'  
+  const isRed = mode === 'lose' || mode === 'bust'
+  const isGreen = mode === 'win'
+  const accentColor = isRed ? '#ef4444' : isGreen ? '#4edd79' : mode === 'tied' ? '#b1b1b1' : '#d4a843'
+  const borderColor = isRed ? 'rgba(239,68,68,0.5)' : isGreen ? '#31864b' : mode === 'tied' ? '#4e4e4e' : 'rgba(212,168,67,0.5)'
+  const bgColor = isRed ? 'rgba(239,68,68,0.08)' : isGreen ? '#0d2414' : mode === 'tied' ? '#141414' : 'rgba(0,0,0,0.3)'
 
   const label = mode === 'rec' ? 'AI RECOMMENDATION' : null
-  const content = mode === 'p lost' ? 'You Bust' : mode === 'p win' ? 'Dealer Bust' 
-  : mode === 'pb win' ? 'Player Blackjack!' : mode === 'pb lost' ? 'Dealer Blackjack!' :  action
+  const content = mode === 'win' ? 'YOU WIN'
+    : mode === 'lose' ? 'YOU LOSE'
+    : mode === 'bust' ? 'YOU BUST'
+    : mode === 'tied' ? 'TIED'
+    : mode === 'blackjack' ? 'BLACKJACK'
+    : action
 
   return (
     <div style={{ ...styles.aiBar, borderColor, background: bgColor }}>
@@ -205,7 +208,7 @@ export default function App() {
       )
       setPlayerCards(pCards)
       setDealerCards(dCards)
-      if (isNaturalBlackjack(pCards)) setGameOver('Player Blackjack!') // natural blackjack is an A + any other 10 value card in the initial deal
+      if (isNaturalBlackjack(pCards)) setGameOver('BLACKJACK')
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -223,8 +226,8 @@ export default function App() {
       const updated = [...playerCards, newCard]
       setPlayerCards(updated)
       const score = calcScore(updated)
-      if (score > 21) setGameOver('BUST You lose!')
-      else if (score === 21) setGameOver('21')
+      if (score > 21) setGameOver('YOU BUST')
+      else if (score === 21) await stand(updated)
     } catch (e) {
       setError((e as Error).message)
     }
@@ -234,47 +237,44 @@ export default function App() {
     return new Promise(resolve => setTimeout(resolve, delay))
   }
 
-  async function stand() {
+  async function stand(currentPlayerCards: CardData[] = playerCards) {
     let dCards = dealerCards.map(c => c.faceDown ? { ...c, faceDown: false } : c)
     setDealerCards(dCards)
     let currentDealerScore = calcScore(dCards)
+
     if (isNaturalBlackjack(dCards)) {
-      setGameOver('Dealer Blackjack!')
+      setGameOver('YOU LOSE')
       return
-    } else if (currentDealerScore < 17) {
-      
-      if (!deckId) return 
-      try {
-        const res = await fetch(`http://localhost:8000/game/stand?deck_id=${deckId}`, { method: 'POST' })
+    }
+
+    if (!deckId) return
+
+    try {
+      while (currentDealerScore < 17) {
+        const res = await fetch(`http://localhost:8000/game/hit?deck_id=${deckId}`, { method: 'POST' })
         if (!res.ok) throw new Error(`Server error: ${res.status}`)
         const data = await res.json()
         const newCard = mapApiCard(data.card as ApiCard)
-        let dealerUpdated = [...dCards, newCard]
+        dCards = [...dCards, newCard]
         await timeout(1000)
-        setDealerCards(dealerUpdated)
-        currentDealerScore = calcScore(dealerUpdated)
-
-        while (currentDealerScore < 17) {
-          const res = await fetch(`http://localhost:8000/game/stand?deck_id=${deckId}`, { method: 'POST' })
-          if (!res.ok) throw new Error(`Server error: ${res.status}`)
-          const data = await res.json()
-          const newCard = mapApiCard(data.card as ApiCard)
-          dealerUpdated = [...dealerUpdated, newCard]
-          await timeout(1000)
-          setDealerCards(dealerUpdated)
-          currentDealerScore = calcScore(dealerUpdated)
-          if (currentDealerScore > 21) {
-            setGameOver('BUST You win!')
-            break
-          }
+        setDealerCards(dCards)
+        currentDealerScore = calcScore(dCards)
+        if (currentDealerScore > 21) {
+          setGameOver('YOU WIN')
+          return
         }
-      } catch (e) {
-        setError((e as Error).message)
       }
-    } else if (currentDealerScore > calcScore(playerCards)) {
-      setGameOver('Player Wins!')
-    } else {
-      setGameOver('Push!')
+
+      const pScore = calcScore(currentPlayerCards)
+      if (currentDealerScore > pScore) {
+        setGameOver('YOU LOSE')
+      } else if (pScore > currentDealerScore) {
+        setGameOver('YOU WIN')
+      } else {
+        setGameOver('TIED')
+      }
+    } catch (e) {
+      setError((e as Error).message)
     }
   }
 
@@ -307,11 +307,11 @@ export default function App() {
             <AiRecommendBar
               action="HIT"
               mode={
-                gameOver === 'BUST You lose!' ? 'p lost'
-                : gameOver === 'BUST You win!' ? 'p win'
-                : gameOver === 'Player Blackjack!' ? 'pb win'
-                : gameOver === 'Dealer Blackjack!' ? 'pb lost'
-                : gameOver === 'Push!' ? 'tied'
+                gameOver === 'YOU BUST' ? 'bust'
+                : gameOver === 'YOU WIN' ? 'win'
+                : gameOver === 'YOU LOSE' ? 'lose'
+                : gameOver === 'TIED' ? 'tied'
+                : gameOver === 'BLACKJACK' ? 'blackjack'
                 : 'rec'
               }
             />
@@ -319,7 +319,7 @@ export default function App() {
             <ActionButtons
               onHit={hit}
               onNewGame={startNewGame}
-              onStand={stand}
+              onStand={() => stand()}
               disabled={gameOver !== null}
             />
           </>
