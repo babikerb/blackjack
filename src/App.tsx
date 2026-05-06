@@ -210,7 +210,14 @@ export default function App() {
       )
       setPlayerCards(pCards)
       setDealerCards(dCards)
-      if (isNaturalBlackjack(pCards)) setGameOver('BLACKJACK')
+      const playerBJ = isNaturalBlackjack(pCards)
+      const dealerBJ = isNaturalBlackjack(dCards)
+      if (playerBJ || dealerBJ) {
+        setDealerCards(dCards.map(c => ({ ...c, faceDown: false })))
+        if (playerBJ && dealerBJ) setGameOver('TIED')
+        else if (dealerBJ) setGameOver('YOU LOSE')
+        else setGameOver('BLACKJACK')
+      }
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -243,11 +250,6 @@ export default function App() {
     let dCards = dealerCards.map(c => c.faceDown ? { ...c, faceDown: false } : c)
     setDealerCards(dCards)
     let currentDealerScore = calcScore(dCards)
-
-    if (isNaturalBlackjack(dCards)) {
-      setGameOver('YOU LOSE')
-      return
-    }
 
     if (!deckId) return
 
