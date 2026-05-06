@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import './App.css'
 
+const API = import.meta.env.VITE_API_URL ?? ''
+
 type Suit = 'spades' | 'hearts' | 'diamonds' | 'clubs'
 type Rank = 'A' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | 'J' | 'Q' | 'K'
 
@@ -198,7 +200,7 @@ export default function App() {
     setError(null)
     setGameOver(null)
     try {
-      const res = await fetch('http://localhost:8000/game/new', { method: 'POST' })
+      const res = await fetch(`${API}/game/new`, { method: 'POST' })
       if (!res.ok) throw new Error(`Server error: ${res.status}`)
       const data = await res.json()
       setDeckId(data.deck_id)
@@ -219,7 +221,7 @@ export default function App() {
   async function hit() {
     if (!deckId) return
     try {
-      const res = await fetch(`http://localhost:8000/game/hit?deck_id=${deckId}`, { method: 'POST' })
+      const res = await fetch(`${API}/game/hit?deck_id=${deckId}`, { method: 'POST' })
       if (!res.ok) throw new Error(`Server error: ${res.status}`)
       const data = await res.json()
       const newCard = mapApiCard(data.card as ApiCard)
@@ -251,7 +253,7 @@ export default function App() {
 
     try {
       while (currentDealerScore < 17) {
-        const res = await fetch(`http://localhost:8000/game/hit?deck_id=${deckId}`, { method: 'POST' })
+        const res = await fetch(`${API}/game/hit?deck_id=${deckId}`, { method: 'POST' })
         if (!res.ok) throw new Error(`Server error: ${res.status}`)
         const data = await res.json()
         const newCard = mapApiCard(data.card as ApiCard)
