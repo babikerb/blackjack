@@ -216,7 +216,7 @@ if __name__ == "__main__":
 
     result, stats = monte_carlo_action(
         player_ranks = ["10", "9"],
-        dealer_upcard = "2",
+        dealer_upcard = "6",
         remaining_deck = deck,
         num_simulations = 1000
     )

@@ -128,6 +128,15 @@ def _draw_random(remaining_deck: dict[str, int]) -> str:
     return card
 
 
+# estimates win rate for hit vs stand via random rollouts
+# returns the best action and a dict of win rates per action
+def monte_carlo_action(
+    player_ranks: list[str],
+    dealer_upcard: str,
+    remaining_deck: dict[str, int],
+    num_simulations: int = 10_000,
+) -> tuple[Action, dict[Action, float]]:
+    ...
 # plays out one random hand given an initial action
 # returns +1 for win, 0 for push, -1 for loss
 def _simulate_hand(
@@ -136,65 +145,26 @@ def _simulate_hand(
     action: Action,
     remaining_deck: dict[str, int],
 ) -> float:
+    ...
     
-    player_hand = player_ranks.copy()
-    dealer_hand = [dealer_upcard]
-    
-    if (action == 'hit'):
-        player_hand.append(_draw_random(remaining_deck))
-        if is_bust(player_hand):
-            return -1
-    
-    player_score, _ = hand_score(player_hand)
-
-    dealer_hand.append(_draw_random(remaining_deck))
-
-    while hand_score(dealer_hand)[0] < 17:
-        dealer_hand.append(_draw_random(remaining_deck))
-
-    dealer_score, _ = hand_score(dealer_hand)
-
-    if (dealer_score > player_score):
-        return -1
-    elif (dealer_score < player_score):
-        return 1
-    else:
-        return 0
-
-        
-
-# estimates win rate for hit vs stand via random rollouts
-# returns the best action and a dict of win rates per action
-def monte_carlo_action(
-    player_ranks: list[str],
-    dealer_upcard: str,
-    remaining_deck: dict[str, int],
-    num_simulations: int
-) -> tuple[Action, dict[Action, float]]:
-
-    
-    # Grab data pertaining to the player's hand
-    # Dealer's single flipped card
-    # And the remaining cards in the deck
+# Grab data pertaining to the player's hand
+# Dealer's single flipped card
+# And the remaining cards in the deck
 
     players_hand = player_ranks.copy()
     dealers_card = dealer_upcard
+    remaining_deck = remaining_deck.copy()
 
-    simulation_quantity = num_simulations
+    seen_cards = players_hand + dealers_card
+    simulation_deck = build_remaining_deck(seen_cards)
 
-    hit_amount = stand_amount = hit_ev = stand_ev = 0
+    win_amount = lose_amount = push_amount = 0
 
-    for _ in range(simulation_quantity):
-        hit_amount += _simulate_hand(players_hand, dealers_card, 'hit', remaining_deck.copy())
-        stand_amount += _simulate_hand(players_hand, dealers_card, 'stand', remaining_deck.copy())
 
-    hit_ev = hit_amount / num_simulations
-    stand_ev = stand_amount / num_simulations
 
-    if (hit_ev > stand_ev):
-        return 'hit', {'hit': hit_ev, 'stand': stand_ev }
-    else:
-        return 'stand', {'hit': hit_ev, 'stand': stand_ev}
+
+
+
 
 
 
@@ -210,16 +180,3 @@ def recommend(
     num_decks: int = 1,
 ) -> dict:
     ...
-
-if __name__ == "__main__":
-    deck = build_remaining_deck([])
-
-    result, stats = monte_carlo_action(
-        player_ranks = ["10", "9"],
-        dealer_upcard = "2",
-        remaining_deck = deck,
-        num_simulations = 1000
-    )
-
-    print("AI Decision: ", result)
-    print("Stats: ", stats)

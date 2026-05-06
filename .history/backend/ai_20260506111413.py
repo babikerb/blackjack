@@ -139,27 +139,30 @@ def _simulate_hand(
     
     player_hand = player_ranks.copy()
     dealer_hand = [dealer_upcard]
+    remaining_cards = remaining_deck.copy()
     
     if (action == 'hit'):
-        player_hand.append(_draw_random(remaining_deck))
+        player_hand.append(_draw_random(remaining_cards))
         if is_bust(player_hand):
             return -1
-    
-    player_score, _ = hand_score(player_hand)
 
-    dealer_hand.append(_draw_random(remaining_deck))
+    if (action == 'stand'):
+        dealer_hand.append(_draw_random(remaining_cards))
 
-    while hand_score(dealer_hand)[0] < 17:
-        dealer_hand.append(_draw_random(remaining_deck))
+        while hand_score(dealer_hand)[0] < 17:
+            dealer_hand.append(_draw_random(remaining_cards))
 
-    dealer_score, _ = hand_score(dealer_hand)
+        player_score, _ = hand_score(player_hand)
+        dealer_score, _ = hand_score (dealer_hand)
 
-    if (dealer_score > player_score):
-        return -1
-    elif (dealer_score < player_score):
-        return 1
-    else:
-        return 0
+        if (dealer_score > 21):
+            return 1
+        elif (dealer_score < player_score):
+            return 1
+        elif (dealer_score > player_score):
+            return -1
+        else:
+            return 0
 
         
 
@@ -169,7 +172,7 @@ def monte_carlo_action(
     player_ranks: list[str],
     dealer_upcard: str,
     remaining_deck: dict[str, int],
-    num_simulations: int
+    num_simulations: int = 10000
 ) -> tuple[Action, dict[Action, float]]:
 
     
@@ -178,23 +181,28 @@ def monte_carlo_action(
     # And the remaining cards in the deck
 
     players_hand = player_ranks.copy()
-    dealers_card = dealer_upcard
+    dealers_card = [dealer_upcard]
 
     simulation_quantity = num_simulations
 
-    hit_amount = stand_amount = hit_ev = stand_ev = 0
+    hit_amount = stand_amount = hit_percentage = stand_percentage = 0
 
-    for _ in range(simulation_quantity):
+    for i in range(simulation_quantity):
         hit_amount += _simulate_hand(players_hand, dealers_card, 'hit', remaining_deck.copy())
         stand_amount += _simulate_hand(players_hand, dealers_card, 'stand', remaining_deck.copy())
 
-    hit_ev = hit_amount / num_simulations
-    stand_ev = stand_amount / num_simulations
+    hit_percentage = hit_amount / num_simulations
+    stand_percentage = stand_amount / num_simulations
 
-    if (hit_ev > stand_ev):
-        return 'hit', {'hit': hit_ev, 'stand': stand_ev }
+    if (hit_percentage > stand_percentage):
+        return 'hit'
     else:
-        return 'stand', {'hit': hit_ev, 'stand': stand_ev}
+        return 'stand'    
+
+
+
+
+
 
 
 
@@ -210,16 +218,3 @@ def recommend(
     num_decks: int = 1,
 ) -> dict:
     ...
-
-if __name__ == "__main__":
-    deck = build_remaining_deck([])
-
-    result, stats = monte_carlo_action(
-        player_ranks = ["10", "9"],
-        dealer_upcard = "2",
-        remaining_deck = deck,
-        num_simulations = 1000
-    )
-
-    print("AI Decision: ", result)
-    print("Stats: ", stats)

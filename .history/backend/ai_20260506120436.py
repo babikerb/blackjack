@@ -215,8 +215,8 @@ if __name__ == "__main__":
     deck = build_remaining_deck([])
 
     result, stats = monte_carlo_action(
-        player_ranks = ["10", "9"],
-        dealer_upcard = "2",
+        player_ranks = ["10", "10"],
+        dealer_upcard = "6",
         remaining_deck = deck,
         num_simulations = 1000
     )
