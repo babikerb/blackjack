@@ -26,14 +26,14 @@ body {
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
-  padding: clamp(8px, 1.5vh, 24px) 16px;
-  padding-bottom: max(clamp(8px, 1.5vh, 24px), env(safe-area-inset-bottom));
-  gap: clamp(6px, 1.2vh, 20px);
+  padding: clamp(6px, 1vh, 16px) 16px;
+  padding-bottom: max(clamp(6px, 1vh, 16px), env(safe-area-inset-bottom));
+  gap: clamp(4px, 0.8vh, 12px);
 }
 
 .bj-table {
   flex: 1;
-  justify-content: space-evenly;
+  justify-content: flex-start;
   overflow: hidden;
 }
 
@@ -41,20 +41,6 @@ body {
   gap: clamp(8px, 1.2vh, 16px);
 }
 
-.bj-ai-bar {
-  min-height: clamp(44px, 6vh, 56px) !important;
-  padding: clamp(8px, 1.3vh, 18px) 20px !important;
-}
-
-.bj-action-btn {
-  min-height: clamp(44px, 6vh, 56px) !important;
-  padding: clamp(8px, 1.3vh, 18px) 4px !important;
-}
-
-.bj-new-game-btn {
-  min-height: clamp(44px, 6vh, 56px) !important;
-  padding: clamp(8px, 1.3vh, 18px) 4px !important;
-}
 
 /* Mobile: natural scroll, match desktop fixed values */
 @media (max-width: 768px) {
@@ -92,18 +78,4 @@ body {
     justify-content: center;
   }
 
-  .bj-ai-bar {
-    min-height: 56px !important;
-    padding: 18px 20px !important;
-  }
-
-  .bj-action-btn {
-    min-height: 56px !important;
-    padding: 18px 4px !important;
-  }
-
-  .bj-new-game-btn {
-    min-height: 56px !important;
-    padding: 18px 4px !important;
-  }
 }

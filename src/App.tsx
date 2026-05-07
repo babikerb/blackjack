@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import './App.css'
 
 const API = import.meta.env.VITE_API_URL ?? ''
@@ -82,9 +82,7 @@ function PlayingCard({ card }: { card: CardData }) {
         <div style={styles.cornerRank}>{card.rank}</div>
         <div style={styles.cornerSuit}>{symbol}</div>
       </div>
-
       <div style={{ ...styles.centerSuit, color }}>{symbol}</div>
-
       <div style={{ ...styles.cornerBottomRight, color }}>
         <div style={styles.cornerRank}>{card.rank}</div>
         <div style={styles.cornerSuit}>{symbol}</div>
@@ -94,29 +92,15 @@ function PlayingCard({ card }: { card: CardData }) {
 }
 
 function ScorePill({ score }: { score: number }) {
-  return (
-    <div style={styles.scorePill}>
-      {score}
-    </div>
-  )
+  return <div style={styles.scorePill}>{score}</div>
 }
 
-function HandSection({
-  label,
-  cards,
-  score,
-}: {
-  label: string
-  cards: CardData[]
-  score: number
-}) {
+function HandSection({ label, cards, score }: { label: string; cards: CardData[]; score: number }) {
   return (
     <div style={styles.handSection} className="bj-hand">
       <div style={styles.handLabel}>{label}</div>
       <div style={styles.cardsRow} className="bj-cards-row">
-        {cards.map((card, i) => (
-          <PlayingCard key={i} card={card} />
-        ))}
+        {cards.map((card, i) => <PlayingCard key={i} card={card} />)}
       </div>
       <ScorePill score={score} />
     </div>
@@ -170,11 +154,178 @@ function AiRecommendBar({
   )
 }
 
+const CHIPS = [
+  { label: '$5',   value: 5,   color: '#ef4444' },
+  { label: '$25',  value: 25,  color: '#3b82f6' },
+  { label: '$50',  value: 50,  color: '#8b5cf6' },
+  { label: '$100', value: 100, color: '#d4a843' },
+  { label: '$500', value: 500, color: '#1a1a1a' },
+]
+
+const CHIP_D = 38
+const CHIP_PEEK = 10
+const MAX_STACK = 8
+const STACK_MAX_H = CHIP_D + (MAX_STACK - 1) * CHIP_PEEK  // fixed height all stacks share
+
+function ChipStack({ chip, count }: { chip: typeof CHIPS[number]; count: number }) {
+  const shown = Math.min(count, MAX_STACK)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+      {/* fixed-height container so all stacks bottom-align */}
+      <div style={{ position: 'relative', width: CHIP_D, height: STACK_MAX_H }}>
+        {Array.from({ length: shown }).map((_, i) => (
+          <div
+            key={i}
+            style={{
+              position: 'absolute',
+              bottom: i * CHIP_PEEK,
+              left: 0,
+              width: CHIP_D,
+              height: CHIP_D,
+              borderRadius: '50%',
+              background: chip.color,
+              border: '2px solid rgba(255,255,255,0.25)',
+              boxShadow: i === shown - 1 ? '0 3px 10px rgba(0,0,0,0.6)' : 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#fff',
+              fontFamily: '"Courier New", Courier, monospace',
+              fontSize: '0.52rem',
+              fontWeight: '800',
+            }}
+          >
+            {i === shown - 1 ? chip.label : ''}
+          </div>
+        ))}
+      </div>
+      <span style={{ fontFamily: '"Courier New", Courier, monospace', fontSize: '0.55rem', color: 'rgba(255,255,255,0.45)', minHeight: '1em' }}>
+        {count > 1 ? `x${count}` : ''}
+      </span>
+    </div>
+  )
+}
+
+function BettingPanel({
+  balance,
+  currentBet,
+  betChips,
+  onChip,
+  onClear,
+  onDeal,
+}: {
+  balance: number
+  currentBet: number
+  betChips: { value: number; color: string }[]
+  onChip: (v: number, color: string) => void
+  onClear: () => void
+  onDeal: () => void
+}) {
+  const counts = CHIPS.map(chip => ({
+    chip,
+    count: betChips.filter(c => c.value === chip.value).length,
+  })).filter(x => x.count > 0)
+
+  return (
+    <div style={styles.bettingPanel}>
+      <div style={styles.balanceRow}>
+        <span style={styles.balanceLabel}>BALANCE</span>
+        <span style={styles.balanceValue}>${balance.toLocaleString()}</span>
+      </div>
+
+      {/* stacked chips side by side per denomination */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 14, height: STACK_MAX_H + 24 }}>
+        {counts.length === 0
+          ? <span style={styles.emptyStack}>place your bet</span>
+          : counts.map(({ chip, count }) => <ChipStack key={chip.value} chip={chip} count={count} />)
+        }
+      </div>
+
+      <div style={styles.betDisplay}>
+        <span style={styles.betLabel}>BET</span>
+        <span style={styles.betValue}>${currentBet.toLocaleString()}</span>
+      </div>
+
+      <div style={styles.chipRow}>
+        {CHIPS.map(chip => {
+          const canAfford = balance - currentBet >= chip.value
+          return (
+            <button
+              key={chip.value}
+              style={{
+                ...styles.chip,
+                background: chip.color,
+                opacity: canAfford ? 1 : 0.3,
+                cursor: canAfford ? 'pointer' : 'not-allowed',
+              }}
+              onClick={() => canAfford && onChip(chip.value, chip.color)}
+            >
+              {chip.label}
+            </button>
+          )
+        })}
+        <button
+          style={{
+            height: '46px',
+            padding: '0 14px',
+            borderRadius: '8px',
+            background: 'transparent',
+            border: '1px solid #4edd79',
+            color: '#4edd79',
+            fontFamily: '"Courier New", Courier, monospace',
+            fontSize: '0.6rem',
+            fontWeight: '800',
+            letterSpacing: '0.12em',
+            cursor: balance - currentBet > 0 ? 'pointer' : 'not-allowed',
+            opacity: balance - currentBet > 0 ? 1 : 0.3,
+            whiteSpace: 'nowrap',
+          }}
+          onClick={() => {
+            const remaining = balance - currentBet
+            if (remaining > 0) onChip(remaining, '#14532d')
+          }}
+        >
+          ALL IN
+        </button>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, width: '100%', height: BTN_H, flexShrink: 0 }}>
+        {([['CLEAR', onClear], ['DEAL', onDeal]] as [string, () => void][]).map(([label, fn]) => (
+          <button
+            key={label}
+            onClick={fn}
+            disabled={currentBet === 0}
+            style={{
+              ...BTN_FONT,
+              flex: '1 0 0',
+              height: BTN_H,
+              background: label === 'DEAL' ? 'rgba(212,168,67,0.15)' : 'transparent',
+              border: `1px solid ${label === 'DEAL' ? 'rgba(212,168,67,0.7)' : 'rgba(212,168,67,0.45)'}`,
+              borderRadius: '8px',
+              color: label === 'DEAL' ? '#d4a843' : 'rgba(255,255,255,0.85)',
+              cursor: currentBet === 0 ? 'not-allowed' : 'pointer',
+              opacity: currentBet === 0 ? 0.3 : 1,
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+const BTN_H = 40
+const BTN_FONT: React.CSSProperties = {
+  fontFamily: '"Courier New", Courier, monospace',
+  fontSize: '0.78rem',
+  fontWeight: '700',
+  letterSpacing: '0.18em',
+  textTransform: 'uppercase',
+}
+
 function ActionButtons({
-  onHit,
-  onNewGame,
-  onStand,
-  disabled,
+  onHit, onNewGame, onStand, disabled,
 }: {
   onHit: () => void
   onNewGame: () => void
@@ -182,26 +333,43 @@ function ActionButtons({
   disabled: boolean
 }) {
   return (
-    <div style={styles.actionsCol}>
-      <div style={styles.actionsRow}>
-        <button
-          style={{ ...styles.actionBtn, opacity: disabled ? 0.4 : 1 }}
-          className="bj-action-btn"
-          onClick={onHit}
-          disabled={disabled}
-        >
-          HIT
-        </button>
-        <button
-          style={{ ...styles.actionBtn, opacity: disabled ? 0.4 : 1 }}
-          className="bj-action-btn"
-          onClick={onStand}
-          disabled={disabled}
-        >
-          STAND
-        </button>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%', flexShrink: 0 }}>
+      <div style={{ display: 'flex', gap: 8, width: '100%', height: BTN_H, flexShrink: 0 }}>
+        {([['HIT', onHit], ['STAND', onStand]] as [string, () => void][]).map(([label, fn]) => (
+          <button
+            key={label}
+            onClick={fn}
+            disabled={disabled}
+            style={{
+              ...BTN_FONT,
+              flex: '1 0 0',
+              height: BTN_H,
+              background: 'transparent',
+              border: '1px solid rgba(212,168,67,0.45)',
+              borderRadius: '8px',
+              color: 'rgba(255,255,255,0.85)',
+              cursor: disabled ? 'not-allowed' : 'pointer',
+              opacity: disabled ? 0.4 : 1,
+            }}
+          >
+            {label}
+          </button>
+        ))}
       </div>
-      <button style={styles.newGameBtn} className="bj-new-game-btn" onClick={onNewGame}>
+      <button
+        onClick={onNewGame}
+        style={{
+          ...BTN_FONT,
+          width: '100%',
+          height: BTN_H,
+          flexShrink: 0,
+          background: 'rgba(212,168,67,0.15)',
+          border: '1px solid rgba(212,168,67,0.7)',
+          borderRadius: '8px',
+          color: '#d4a843',
+          cursor: 'pointer',
+        }}
+      >
         NEW GAME
       </button>
     </div>
@@ -209,6 +377,10 @@ function ActionButtons({
 }
 
 export default function App() {
+  const [phase, setPhase] = useState<'betting' | 'playing'>('betting')
+  const [balance, setBalance] = useState(1000)
+  const [currentBet, setCurrentBet] = useState(0)
+  const [betChips, setBetChips] = useState<{ value: number; color: string }[]>([])
   const [playerCards, setPlayerCards] = useState<CardData[]>([])
   const [dealerCards, setDealerCards] = useState<CardData[]>([])
   const [deckId, setDeckId] = useState<string | null>(null)
@@ -217,7 +389,6 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [algorithm, setAlgorithm] = useState<'basic' | 'montecarlo'>('montecarlo')
   const [aiRec, setAiRec] = useState<string>('...')
-  const initialized = useRef(false)
 
   async function fetchRecommendation(pCards: CardData[], dCards: CardData[], algo: 'basic' | 'montecarlo') {
     setAiRec('...')
@@ -241,7 +412,15 @@ export default function App() {
     }
   }
 
-  async function startNewGame() {
+  function resolveBalance(result: string, bet: number) {
+    if (result === 'YOU WIN') setBalance(b => b + bet * 2)
+    else if (result === 'BLACKJACK') setBalance(b => b + Math.floor(bet * 2.5))
+    else if (result === 'TIED') setBalance(b => b + bet)
+    // lose/bust: nothing, already deducted
+  }
+
+  async function deal() {
+    setBalance(b => b - currentBet)
     setLoading(true)
     setError(null)
     setGameOver(null)
@@ -256,17 +435,19 @@ export default function App() {
       )
       setPlayerCards(pCards)
       setDealerCards(dCards)
+      setPhase('playing')
       const playerBJ = isNaturalBlackjack(pCards)
       const dealerBJ = isNaturalBlackjack(dCards)
       if (playerBJ || dealerBJ) {
         setDealerCards(dCards.map(c => ({ ...c, faceDown: false })))
-        if (playerBJ && dealerBJ) setGameOver('TIED')
-        else if (dealerBJ) setGameOver('YOU LOSE')
-        else setGameOver('BLACKJACK')
+        if (playerBJ && dealerBJ) { setGameOver('TIED'); resolveBalance('TIED', currentBet) }
+        else if (dealerBJ) { setGameOver('YOU LOSE'); resolveBalance('YOU LOSE', currentBet) }
+        else { setGameOver('BLACKJACK'); resolveBalance('BLACKJACK', currentBet) }
       } else {
         fetchRecommendation(pCards, dCards, algorithm)
       }
     } catch (e) {
+      setBalance(b => b + currentBet) // refund on error
       setError((e as Error).message)
     } finally {
       setLoading(false)
@@ -283,7 +464,7 @@ export default function App() {
       const updated = [...playerCards, newCard]
       setPlayerCards(updated)
       const score = calcScore(updated)
-      if (score > 21) setGameOver('YOU BUST')
+      if (score > 21) { setGameOver('YOU BUST'); resolveBalance('YOU BUST', currentBet) }
       else if (score === 21) await stand(updated)
       else fetchRecommendation(updated, dealerCards, algorithm)
     } catch (e) {
@@ -299,9 +480,7 @@ export default function App() {
     let dCards = dealerCards.map(c => c.faceDown ? { ...c, faceDown: false } : c)
     setDealerCards(dCards)
     let currentDealerScore = calcScore(dCards)
-
     if (!deckId) return
-
     try {
       while (currentDealerScore < 17) {
         const res = await fetch(`${API}/game/hit?deck_id=${deckId}`, { method: 'POST' })
@@ -314,28 +493,37 @@ export default function App() {
         currentDealerScore = calcScore(dCards)
         if (currentDealerScore > 21) {
           setGameOver('YOU WIN')
+          resolveBalance('YOU WIN', currentBet)
           return
         }
       }
-
       const pScore = calcScore(currentPlayerCards)
-      if (currentDealerScore > pScore) {
-        setGameOver('YOU LOSE')
-      } else if (pScore > currentDealerScore) {
-        setGameOver('YOU WIN')
-      } else {
-        setGameOver('TIED')
-      }
+      let result: string
+      if (currentDealerScore > pScore) result = 'YOU LOSE'
+      else if (pScore > currentDealerScore) result = 'YOU WIN'
+      else result = 'TIED'
+      setGameOver(result)
+      resolveBalance(result, currentBet)
     } catch (e) {
       setError((e as Error).message)
     }
   }
 
+  function newGame() {
+    setPhase('betting')
+    setCurrentBet(0)
+    setBetChips([])
+    setPlayerCards([])
+    setDealerCards([])
+    setGameOver(null)
+    setError(null)
+    setAiRec('...')
+  }
+
   useEffect(() => {
-    if (initialized.current) return
-    initialized.current = true
-    startNewGame()
-  }, [])
+    if (gameOver === null || phase !== 'playing') return
+    if (playerCards.length > 0 && dealerCards.length > 0) return
+  }, [algorithm])
 
   useEffect(() => {
     if (!gameOver && playerCards.length > 0 && dealerCards.length > 0) {
@@ -352,41 +540,67 @@ export default function App() {
 
       {error && <div style={styles.errorBanner}>{error}</div>}
 
-      <div style={styles.table} className="bj-table">
-        {loading ? (
-          <div style={styles.loadingText}>Dealing cards...</div>
-        ) : (
-          <>
-            <div style={styles.handsGroup}>
-              <HandSection label="DEALER" cards={dealerCards} score={dealerScore} />
-              <div style={styles.divider} />
-              <HandSection label="PLAYER" cards={playerCards} score={playerScore} />
-            </div>
+      {phase === 'betting' ? (
+        <div style={{ ...styles.table, justifyContent: 'flex-end' }} className="bj-table">
+          <div style={styles.tableBottom}>
+            <BettingPanel
+              balance={balance}
+              currentBet={currentBet}
+              betChips={betChips}
+              onChip={(v, color) => { setCurrentBet(b => b + v); setBetChips(cs => [...cs, { value: v, color }]) }}
+              onClear={() => { setCurrentBet(0); setBetChips([]) }}
+              onDeal={deal}
+            />
+          </div>
+        </div>
+      ) : (
+        <div style={styles.table} className="bj-table">
+          {loading ? (
+            <div style={styles.loadingText}>Dealing cards...</div>
+          ) : (
+            <>
+              <div style={styles.handsGroup}>
+                <HandSection label="DEALER" cards={dealerCards} score={dealerScore} />
+                <div style={styles.divider} />
+                <HandSection label="PLAYER" cards={playerCards} score={playerScore} />
+              </div>
 
-            <div style={styles.tableBottom}>
-              <AiRecommendBar
-                action={aiRec}
-                algorithm={algorithm}
-                onAlgorithmChange={setAlgorithm}
-                mode={
-                  gameOver === 'YOU BUST' ? 'bust'
-                  : gameOver === 'YOU WIN' ? 'win'
-                  : gameOver === 'YOU LOSE' ? 'lose'
-                  : gameOver === 'TIED' ? 'tied'
-                  : gameOver === 'BLACKJACK' ? 'blackjack'
-                  : 'rec'
-                }
-              />
-              <ActionButtons
-                onHit={hit}
-                onNewGame={startNewGame}
-                onStand={() => stand()}
-                disabled={gameOver !== null}
-              />
-            </div>
-          </>
-        )}
-      </div>
+              <div style={styles.tableBottom}>
+                <div style={styles.balanceBetBar}>
+                  <span style={styles.balanceBetItem}>
+                    <span style={styles.balanceBetLabel}>BALANCE </span>
+                    <span style={styles.balanceBetValue}>${balance.toLocaleString()}</span>
+                  </span>
+                  <span style={styles.balanceBetDivider}>|</span>
+                  <span style={styles.balanceBetItem}>
+                    <span style={styles.balanceBetLabel}>BET </span>
+                    <span style={styles.balanceBetValue}>${currentBet.toLocaleString()}</span>
+                  </span>
+                </div>
+                <AiRecommendBar
+                  action={aiRec}
+                  algorithm={algorithm}
+                  onAlgorithmChange={setAlgorithm}
+                  mode={
+                    gameOver === 'YOU BUST' ? 'bust'
+                    : gameOver === 'YOU WIN' ? 'win'
+                    : gameOver === 'YOU LOSE' ? 'lose'
+                    : gameOver === 'TIED' ? 'tied'
+                    : gameOver === 'BLACKJACK' ? 'blackjack'
+                    : 'rec'
+                  }
+                />
+                <ActionButtons
+                  onHit={hit}
+                  onNewGame={newGame}
+                  onStand={() => stand()}
+                  disabled={gameOver !== null}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -401,7 +615,6 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'flex-start',
     overflow: 'hidden',
   },
-
 
   title: {
     fontFamily: 'Georgia, "Times New Roman", serif',
@@ -423,7 +636,7 @@ const styles: Record<string, React.CSSProperties> = {
   tableBottom: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '10px',
+    gap: 8,
     width: '100%',
     flexShrink: 0,
   },
@@ -456,8 +669,8 @@ const styles: Record<string, React.CSSProperties> = {
 
   card: {
     position: 'relative',
-    width: 'min(110px, 22vw, 15vh)',
-    height: 'min(154px, 31vw, 21vh)',
+    width: 'min(90px, 18vw, 12vh)',
+    height: 'min(126px, 25vw, 17vh)',
     background: '#fff',
     borderRadius: '10px',
     boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
@@ -466,8 +679,8 @@ const styles: Record<string, React.CSSProperties> = {
 
   cardFaceDown: {
     position: 'relative',
-    width: 'min(110px, 22vw, 15vh)',
-    height: 'min(154px, 31vw, 21vh)',
+    width: 'min(90px, 18vw, 12vh)',
+    height: 'min(126px, 25vw, 17vh)',
     background: '#163324',
     borderRadius: '10px',
     border: '2px dashed rgba(255,255,255,0.22)',
@@ -546,8 +759,11 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 'clamp(14px, 2.5vh, 28px)',
+    justifyContent: 'space-evenly',
     width: '100%',
+    flex: 1,
+    overflow: 'hidden',
+    minHeight: 0,
   },
 
   divider: {
@@ -556,22 +772,157 @@ const styles: Record<string, React.CSSProperties> = {
     background: 'rgba(255,255,255,0.08)',
   },
 
-  aiBar: {
-    padding: '18px 20px',
-    minHeight: '56px',
-    border: '1px solid rgba(212,168,67,0.5)',
+  // Betting phase
+  bettingPanel: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+    width: '100%',
+    alignItems: 'center',
+  },
+
+  balanceRow: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '2px',
+  },
+
+  balanceLabel: {
+    fontFamily: '"Courier New", Courier, monospace',
+    fontSize: '0.6rem',
+    fontWeight: '600',
+    letterSpacing: '0.25em',
+    color: 'rgba(255,255,255,0.4)',
+  },
+
+  balanceValue: {
+    fontFamily: '"Courier New", Courier, monospace',
+    fontSize: '1.1rem',
+    fontWeight: '700',
+    color: '#d4a843',
+    letterSpacing: '0.05em',
+  },
+
+  emptyStack: {
+    fontFamily: '"Courier New", Courier, monospace',
+    fontSize: '0.6rem',
+    color: 'rgba(255,255,255,0.25)',
+    letterSpacing: '0.15em',
+    textTransform: 'uppercase',
+    alignSelf: 'center',
+  },
+
+  chipRow: {
+    display: 'flex',
+    gap: '8px',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    width: '100%',
+  },
+
+  chip: {
+    width: '46px',
+    height: '46px',
+    borderRadius: '50%',
+    border: '2px solid rgba(255,255,255,0.25)',
+    color: '#fff',
+    fontFamily: '"Courier New", Courier, monospace',
+    fontSize: '0.58rem',
+    fontWeight: '800',
+    letterSpacing: '0.02em',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    boxShadow: '0 3px 8px rgba(0,0,0,0.4)',
+    userSelect: 'none',
+    WebkitUserSelect: 'none',
+  },
+
+  betDisplay: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '1px',
+    padding: '8px 32px',
     borderRadius: '8px',
-    background: 'rgba(0,0,0,0.3)',
+    border: '1px solid rgba(212,168,67,0.3)',
+    background: 'rgba(0,0,0,0.25)',
+    minWidth: '120px',
+  },
+
+  betLabel: {
+    fontFamily: '"Courier New", Courier, monospace',
+    fontSize: '0.6rem',
+    fontWeight: '600',
+    letterSpacing: '0.25em',
+    color: 'rgba(255,255,255,0.4)',
+  },
+
+  betValue: {
+    fontFamily: '"Courier New", Courier, monospace',
+    fontSize: '1rem',
+    fontWeight: '700',
+    color: '#ffffff',
+    letterSpacing: '0.05em',
+  },
+
+  // Balance/bet bar during play
+  balanceBetBar: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+    height: 34,
+    padding: '0 16px',
+    borderRadius: 6,
+    background: 'rgba(0,0,0,0.2)',
+    border: '1px solid rgba(255,255,255,0.07)',
+    width: '100%',
+    flexShrink: 0,
+    overflow: 'hidden',
+  },
+
+  balanceBetItem: {
+    fontFamily: '"Courier New", Courier, monospace',
+    fontSize: '0.7rem',
+    letterSpacing: '0.08em',
+  },
+
+  balanceBetLabel: {
+    color: 'rgba(255,255,255,0.4)',
+    fontWeight: '600',
+  },
+
+  balanceBetValue: {
+    color: '#d4a843',
+    fontWeight: '700',
+  },
+
+  balanceBetDivider: {
+    color: 'rgba(255,255,255,0.15)',
+    fontFamily: '"Courier New", Courier, monospace',
+  },
+
+  aiBar: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
+    padding: '0 16px',
+    height: 44,
     width: '100%',
-    gap: '10px',
+    flexShrink: 0,
+    overflow: 'hidden',
+    border: '1px solid rgba(212,168,67,0.5)',
+    borderRadius: 8,
+    background: 'rgba(0,0,0,0.3)',
+    gap: 10,
   },
 
   aiBarText: {
     fontFamily: '"Courier New", Courier, monospace',
-    fontSize: 'clamp(0.72rem, 1.4vw, 0.95rem)',
+    fontSize: 'clamp(0.62rem, 1.2vw, 0.82rem)',
     fontWeight: '700',
     letterSpacing: '0.2em',
     color: 'rgba(255,255,255,0.6)',
@@ -606,52 +957,6 @@ const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
   },
 
-  actionsCol: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '12px',
-    alignItems: 'center',
-    width: '100%',
-  },
-
-  actionsRow: {
-    display: 'flex',
-    gap: '12px',
-    width: '100%',
-  },
-
-  actionBtn: {
-    flex: 1,
-    padding: '18px 4px',
-    minHeight: '56px',
-    background: 'transparent',
-    border: '1px solid rgba(212,168,67,0.45)',
-    borderRadius: '10px',
-    color: 'rgba(255,255,255,0.85)',
-    fontFamily: '"Courier New", Courier, monospace',
-    fontSize: 'clamp(0.78rem, 1.4vw, 1rem)',
-    fontWeight: '700',
-    letterSpacing: '0.18em',
-    textTransform: 'uppercase',
-    cursor: 'pointer',
-    transition: 'border-color 0.15s, background 0.15s',
-  },
-
-  newGameBtn: {
-    width: '100%',
-    padding: '18px 4px',
-    minHeight: '56px',
-    background: 'rgba(212,168,67,0.15)',
-    border: '1px solid rgba(212,168,67,0.7)',
-    borderRadius: '10px',
-    color: '#d4a843',
-    fontFamily: '"Courier New", Courier, monospace',
-    fontSize: 'clamp(0.78rem, 1.4vw, 1rem)',
-    fontWeight: '700',
-    letterSpacing: '0.18em',
-    textTransform: 'uppercase',
-    cursor: 'pointer',
-  },
 
   loadingText: {
     fontFamily: '"Courier New", Courier, monospace',
