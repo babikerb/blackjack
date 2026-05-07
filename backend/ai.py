@@ -136,27 +136,36 @@ def _simulate_hand(
     action: Action,
     remaining_deck: dict[str, int],
 ) -> float:
-    
+
     player_hand = player_ranks.copy()
-    dealer_hand = [dealer_upcard]
-    
-    if (action == 'hit'):
+
+    # draw the dealer's hidden card first so it's removed from the deck
+    # before any player/dealer draws happen
+    dealer_hidden = _draw_random(remaining_deck)
+    dealer_hand = [dealer_upcard, dealer_hidden]
+
+    if action == 'hit':
         player_hand.append(_draw_random(remaining_deck))
         if is_bust(player_hand):
             return -1
-    
-    player_score, _ = hand_score(player_hand)
+        # keep hitting using basic strategy until we'd stand
+        while basic_strategy(player_hand, dealer_upcard) == 'hit':
+            player_hand.append(_draw_random(remaining_deck))
+            if is_bust(player_hand):
+                return -1
 
-    dealer_hand.append(_draw_random(remaining_deck))
+    player_score, _ = hand_score(player_hand)
 
     while hand_score(dealer_hand)[0] < 17:
         dealer_hand.append(_draw_random(remaining_deck))
 
     dealer_score, _ = hand_score(dealer_hand)
 
-    if (dealer_score > player_score):
+    if dealer_score > 21:
+        return 1
+    if dealer_score > player_score:
         return -1
-    elif (dealer_score < player_score):
+    elif dealer_score < player_score:
         return 1
     else:
         return 0
@@ -169,7 +178,7 @@ def monte_carlo_action(
     player_ranks: list[str],
     dealer_upcard: str,
     remaining_deck: dict[str, int],
-    num_simulations: int
+    num_simulations: int = 10_000,
 ) -> tuple[Action, dict[Action, float]]:
 
     
@@ -211,15 +220,3 @@ def recommend(
 ) -> dict:
     ...
 
-if __name__ == "__main__":
-    deck = build_remaining_deck([])
-
-    result, stats = monte_carlo_action(
-        player_ranks = ["10", "9"],
-        dealer_upcard = "2",
-        remaining_deck = deck,
-        num_simulations = 1000
-    )
-
-    print("AI Decision: ", result)
-    print("Stats: ", stats)

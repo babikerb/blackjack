@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import './App.css'
 
 const API = import.meta.env.VITE_API_URL ?? ''
@@ -293,7 +293,7 @@ export default function App() {
 
   return (
     <div style={styles.root}>
-      <h1 style={styles.title}>Blackjack AI</h1>
+      <h1 style={styles.title}>Blackjack</h1>
 
       {error && <div style={styles.errorBanner}>{error}</div>}
 

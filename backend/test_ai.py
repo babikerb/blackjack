@@ -1,81 +1,95 @@
-from ai import hand_score, basic_strategy, build_remaining_deck, _draw_random
+import random
+from ai import hand_score, basic_strategy, monte_carlo_action, build_remaining_deck, _draw_random
 
-def new_deck() -> dict[str, int]:
-    return build_remaining_deck([])
+TEN_RANKS = {'10', 'J', 'Q', 'K'}
 
-def draw_card(deck: dict[str, int]) -> str:
-    return _draw_random(deck)
 
-def play_dealer(deck: dict[str, int], dealer_hand: list[str]) -> list[str]:
+def is_blackjack(hand):
+    return len(hand) == 2 and 'A' in hand and bool(TEN_RANKS & set(hand))
+
+
+def play_dealer(deck, dealer_hand):
     while hand_score(dealer_hand)[0] < 17:
-        dealer_hand.append(draw_card(deck))
+        dealer_hand.append(_draw_random(deck))
     return dealer_hand
 
-def outcome(player: list[str], dealer: list[str]) -> str:
+
+def outcome(player, dealer):
     p, _ = hand_score(player)
     d, _ = hand_score(dealer)
-    if p > 21:
-        return "lose"
-    if d > 21 or p > d:
-        return "win"
-    if p < d:
-        return "lose"
+    if p > 21: return "bust"
+    if d > 21 or p > d: return "win"
+    if p < d: return "lose"
     return "push"
 
 
-GAMES = 1000
-wins = losses = pushes = 0
+def play(player, dealer_up, dealer_hidden, deck, strategy):
+    player = list(player)
+    dealer_hand = [dealer_up, dealer_hidden]
 
-print(f"running {GAMES} simulated games...\n")
-print(f"{'#':<6} {'player':<28} {'dealer up':<10} {'action':<8} {'p score':<9} {'d score':<9} result")
-print("-" * 80)
+    player_bj = is_blackjack(player)
+    dealer_bj = is_blackjack(dealer_hand)
+    if player_bj or dealer_bj:
+        if player_bj and dealer_bj: return player, dealer_hand, "push", "blackjack"
+        if dealer_bj: return player, dealer_hand, "lose", "blackjack"
+        return player, dealer_hand, "win", "blackjack"
 
-for i in range(1, GAMES + 1):
-    deck = new_deck()
-
-    player = [draw_card(deck), draw_card(deck)]
-    dealer_up = draw_card(deck)
-    dealer_hand = [dealer_up, draw_card(deck)]
-
-    action = basic_strategy(player, dealer_up)
-    first_action = action
-    while action == "hit":
-        player.append(draw_card(deck))
-        if hand_score(player)[0] >= 21:
-            break
+    if strategy == "basic":
         action = basic_strategy(player, dealer_up)
+        first = action
+        while action == "hit":
+            player.append(_draw_random(deck))
+            score = hand_score(player)[0]
+            if score > 21: return player, dealer_hand, "bust", first
+            if score == 21: break
+            action = basic_strategy(player, dealer_up)
+    else:
+        seen = player + [dealer_up]
+        action, _ = monte_carlo_action(player, dealer_up, build_remaining_deck(seen, num_decks=1), num_simulations=3000)
+        first = action
+        while action == "hit":
+            player.append(_draw_random(deck))
+            score = hand_score(player)[0]
+            if score > 21: return player, dealer_hand, "bust", first
+            if score == 21: break
+            seen = player + [dealer_up]
+            action, _ = monte_carlo_action(player, dealer_up, build_remaining_deck(seen, num_decks=1), num_simulations=3000)
 
     dealer_hand = play_dealer(deck, dealer_hand)
-    result = outcome(player, dealer_hand)
+    return player, dealer_hand, outcome(player, dealer_hand), first
 
-    if result == "win":
-        wins += 1
-    elif result == "lose":
-        losses += 1
-    else:
-        pushes += 1
 
-    p_score, _ = hand_score(player)
-    d_score, _ = hand_score(dealer_hand)
-    marker = "✓" if result == "win" else "✗" if result == "lose" else "~"
-    print(f"{i:<6} {str(player):<28} {dealer_up:<10} {first_action:<8} {p_score:<9} {d_score:<9} {marker} {result}")
+GAMES = 1000
+random.seed(42)
+hands = []
+for _ in range(GAMES):
+    deck = build_remaining_deck([])
+    hands.append(([_draw_random(deck), _draw_random(deck)], _draw_random(deck), _draw_random(deck), deck))
 
-print("-" * 80)
-print(f"\nresults over {GAMES} games:")
-print(f"  wins:   {wins:<4} ({wins / GAMES * 100:.1f}%)")
-print(f"  losses: {losses:<4} ({losses / GAMES * 100:.1f}%)")
-print(f"  pushes: {pushes:<4} ({pushes / GAMES * 100:.1f}%)")
+bs_wins = bs_losses = bs_pushes = 0
+mc_wins = mc_losses = mc_pushes = 0
 
-# 1000 simulated games using basic strategy (hit/stand only)
-# - Wins: 421 (42.1%)
-# - Losses: 488 (48.8%)
-# - Pushes: 91 (9.1%)
-#
-# the main rules:
-# - stand on 17 or higher, always
-# - if dealer shows 2-6 they have to keep drawing and will probably bust, so stand and wait
-# - if dealer shows 7 or higher they're already strong, so you need to hit and try to beat them
-# - if you have an ace it counts as 11 until it would bust you, so you can hit more freely
-#
-# 42.1% win rate matches what basic strategy is supposed to get you (~42-43%)
-# you still lose more than you win because you go first and can bust before the dealer even plays
+print(f"Running {GAMES} games... (this may take a while)")
+
+for i, (start, dup, dhid, extra) in enumerate(hands, 1):
+    bp, bd, br, ba = play(start, dup, dhid, dict(extra), "basic")
+    mp, md, mr, ma = play(start, dup, dhid, dict(extra), "montecarlo")
+
+    if br in ("win", "blackjack"): bs_wins += 1
+    elif br in ("lose", "bust"):   bs_losses += 1
+    else:                           bs_pushes += 1
+
+    if mr in ("win", "blackjack"): mc_wins += 1
+    elif mr in ("lose", "bust"):   mc_losses += 1
+    else:                           mc_pushes += 1
+
+    if i % 100 == 0:
+        print(f"  {i}/{GAMES} games done...")
+print(f"\n{'':=<60}")
+print(f"  {GAMES} GAMES — RESULTS AGAINST THE DEALER")
+print(f"{'':=<60}")
+print(f"  {'':18} {'BASIC STRATEGY':>16}   {'MONTE CARLO':>11}")
+print(f"  {'wins':<18} {bs_wins:>8} ({bs_wins/GAMES*100:.1f}%)   {mc_wins:>5} ({mc_wins/GAMES*100:.1f}%)")
+print(f"  {'losses':<18} {bs_losses:>8} ({bs_losses/GAMES*100:.1f}%)   {mc_losses:>5} ({mc_losses/GAMES*100:.1f}%)")
+print(f"  {'pushes':<18} {bs_pushes:>8} ({bs_pushes/GAMES*100:.1f}%)   {mc_pushes:>5} ({mc_pushes/GAMES*100:.1f}%)")
+print(f"{'':=<60}")
