@@ -218,5 +218,10 @@ def recommend(
     method: Literal["expectimax", "montecarlo", "basic"] = "montecarlo",
     num_decks: int = 1,
 ) -> dict:
-    ...
+    remaining = build_remaining_deck(seen_ranks, num_decks)
+    if method == "basic":
+        action = basic_strategy(player_ranks, dealer_upcard)
+        return {"action": action, "scores": {}, "method": "basic"}
+    action, scores = monte_carlo_action(player_ranks, dealer_upcard, remaining, num_simulations=1000)
+    return {"action": action, "scores": scores, "method": "montecarlo"}
 

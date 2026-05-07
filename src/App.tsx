@@ -111,9 +111,9 @@ function HandSection({
   score: number
 }) {
   return (
-    <div style={styles.handSection}>
+    <div style={styles.handSection} className="bj-hand">
       <div style={styles.handLabel}>{label}</div>
-      <div style={styles.cardsRow}>
+      <div style={styles.cardsRow} className="bj-cards-row">
         {cards.map((card, i) => (
           <PlayingCard key={i} card={card} />
         ))}
@@ -125,14 +125,14 @@ function HandSection({
 
 type BarMode = 'rec' | 'win' | 'lose' | 'bust' | 'tied' | 'blackjack'
 
-function AiRecommendBar({ action, mode }: { action: string; mode: BarMode }) {
-  const isRed = mode === 'lose' || mode === 'bust'
-  const isGreen = mode === 'win'
-  const accentColor = isRed ? '#ef4444' : isGreen ? '#4edd79' : mode === 'tied' ? '#b1b1b1' : '#d4a843'
-  const borderColor = isRed ? 'rgba(239,68,68,0.5)' : isGreen ? '#31864b' : mode === 'tied' ? '#4e4e4e' : 'rgba(212,168,67,0.5)'
-  const bgColor = isRed ? 'rgba(239,68,68,0.08)' : isGreen ? '#0d2414' : mode === 'tied' ? '#141414' : 'rgba(0,0,0,0.3)'
-
-  const label = mode === 'rec' ? 'AI RECOMMENDATION' : null
+function AiRecommendBar({
+  action, mode, algorithm, onAlgorithmChange,
+}: {
+  action: string
+  mode: BarMode
+  algorithm: 'basic' | 'montecarlo'
+  onAlgorithmChange: (a: 'basic' | 'montecarlo') => void
+}) {
   const content = mode === 'win' ? 'YOU WIN'
     : mode === 'lose' ? 'YOU LOSE'
     : mode === 'bust' ? 'YOU BUST'
@@ -140,12 +140,32 @@ function AiRecommendBar({ action, mode }: { action: string; mode: BarMode }) {
     : mode === 'blackjack' ? 'BLACKJACK'
     : action
 
+  const isRed = mode === 'lose' || mode === 'bust'
+  const isGreen = mode === 'win'
+  const accentColor = isRed ? '#ef4444' : isGreen ? '#4edd79' : mode === 'tied' ? '#b1b1b1'
+    : content === 'HIT' ? '#4edd79'
+    : content === 'STAND' ? '#ef4444'
+    : '#d4a843'
+  const borderColor = isRed ? 'rgba(239,68,68,0.5)' : isGreen ? '#31864b' : mode === 'tied' ? '#4e4e4e'
+    : content === 'HIT' ? 'rgba(78,221,121,0.4)' : content === 'STAND' ? 'rgba(239,68,68,0.4)' : 'rgba(212,168,67,0.5)'
+  const bgColor = isRed ? 'rgba(239,68,68,0.08)' : isGreen ? '#0d2414' : mode === 'tied' ? '#141414' : 'rgba(0,0,0,0.3)'
+
   return (
-    <div style={{ ...styles.aiBar, borderColor, background: bgColor }}>
+    <div style={{ ...styles.aiBar, borderColor, background: bgColor }} className="bj-ai-bar">
       <span style={styles.aiBarText}>
-        {label && <>{label}{' '}</>}
+        {mode === 'rec' && <span style={styles.aiBarLabel}>AI RECOMMENDATION </span>}
         <span style={{ ...styles.aiBarAction, color: accentColor }}>{content}</span>
       </span>
+      {mode === 'rec' && (
+        <select
+          value={algorithm}
+          onChange={e => onAlgorithmChange(e.target.value as 'basic' | 'montecarlo')}
+          style={styles.algoDropdown}
+        >
+          <option value="montecarlo">MC</option>
+          <option value="basic">BS</option>
+        </select>
+      )}
     </div>
   )
 }
@@ -166,6 +186,7 @@ function ActionButtons({
       <div style={styles.actionsRow}>
         <button
           style={{ ...styles.actionBtn, opacity: disabled ? 0.4 : 1 }}
+          className="bj-action-btn"
           onClick={onHit}
           disabled={disabled}
         >
@@ -173,13 +194,14 @@ function ActionButtons({
         </button>
         <button
           style={{ ...styles.actionBtn, opacity: disabled ? 0.4 : 1 }}
+          className="bj-action-btn"
           onClick={onStand}
           disabled={disabled}
         >
           STAND
         </button>
       </div>
-      <button style={styles.newGameBtn} onClick={onNewGame}>
+      <button style={styles.newGameBtn} className="bj-new-game-btn" onClick={onNewGame}>
         NEW GAME
       </button>
     </div>
@@ -193,7 +215,31 @@ export default function App() {
   const [gameOver, setGameOver] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [algorithm, setAlgorithm] = useState<'basic' | 'montecarlo'>('montecarlo')
+  const [aiRec, setAiRec] = useState<string>('...')
   const initialized = useRef(false)
+
+  async function fetchRecommendation(pCards: CardData[], dCards: CardData[], algo: 'basic' | 'montecarlo') {
+    setAiRec('...')
+    try {
+      const playerRanks = pCards.map(c => c.rank)
+      const dealerUpcard = dCards[0].rank
+      const res = await fetch(`${API}/game/recommend`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          player_cards: playerRanks,
+          dealer_upcard: dealerUpcard,
+          seen_cards: [...playerRanks, dealerUpcard],
+          method: algo,
+        }),
+      })
+      const data = await res.json()
+      setAiRec((data.action as string).toUpperCase())
+    } catch {
+      setAiRec('?')
+    }
+  }
 
   async function startNewGame() {
     setLoading(true)
@@ -217,6 +263,8 @@ export default function App() {
         if (playerBJ && dealerBJ) setGameOver('TIED')
         else if (dealerBJ) setGameOver('YOU LOSE')
         else setGameOver('BLACKJACK')
+      } else {
+        fetchRecommendation(pCards, dCards, algorithm)
       }
     } catch (e) {
       setError((e as Error).message)
@@ -237,6 +285,7 @@ export default function App() {
       const score = calcScore(updated)
       if (score > 21) setGameOver('YOU BUST')
       else if (score === 21) await stand(updated)
+      else fetchRecommendation(updated, dealerCards, algorithm)
     } catch (e) {
       setError((e as Error).message)
     }
@@ -288,44 +337,53 @@ export default function App() {
     startNewGame()
   }, [])
 
+  useEffect(() => {
+    if (!gameOver && playerCards.length > 0 && dealerCards.length > 0) {
+      fetchRecommendation(playerCards, dealerCards, algorithm)
+    }
+  }, [algorithm])
+
   const playerScore = calcScore(playerCards)
   const dealerScore = calcScore(dealerCards)
 
   return (
-    <div style={styles.root}>
+    <div style={styles.root} className="bj-root">
       <h1 style={styles.title}>Blackjack</h1>
 
       {error && <div style={styles.errorBanner}>{error}</div>}
 
-      <div style={styles.table}>
+      <div style={styles.table} className="bj-table">
         {loading ? (
           <div style={styles.loadingText}>Dealing cards...</div>
         ) : (
           <>
-            <HandSection label="DEALER" cards={dealerCards} score={dealerScore} />
+            <div style={styles.handsGroup}>
+              <HandSection label="DEALER" cards={dealerCards} score={dealerScore} />
+              <div style={styles.divider} />
+              <HandSection label="PLAYER" cards={playerCards} score={playerScore} />
+            </div>
 
-            <div style={styles.divider} />
-
-            <HandSection label="PLAYER" cards={playerCards} score={playerScore} />
-
-            <AiRecommendBar
-              action="HIT"
-              mode={
-                gameOver === 'YOU BUST' ? 'bust'
-                : gameOver === 'YOU WIN' ? 'win'
-                : gameOver === 'YOU LOSE' ? 'lose'
-                : gameOver === 'TIED' ? 'tied'
-                : gameOver === 'BLACKJACK' ? 'blackjack'
-                : 'rec'
-              }
-            />
-
-            <ActionButtons
-              onHit={hit}
-              onNewGame={startNewGame}
-              onStand={() => stand()}
-              disabled={gameOver !== null}
-            />
+            <div style={styles.tableBottom}>
+              <AiRecommendBar
+                action={aiRec}
+                algorithm={algorithm}
+                onAlgorithmChange={setAlgorithm}
+                mode={
+                  gameOver === 'YOU BUST' ? 'bust'
+                  : gameOver === 'YOU WIN' ? 'win'
+                  : gameOver === 'YOU LOSE' ? 'lose'
+                  : gameOver === 'TIED' ? 'tied'
+                  : gameOver === 'BLACKJACK' ? 'blackjack'
+                  : 'rec'
+                }
+              />
+              <ActionButtons
+                onHit={hit}
+                onNewGame={startNewGame}
+                onStand={() => stand()}
+                disabled={gameOver !== null}
+              />
+            </div>
           </>
         )}
       </div>
@@ -335,20 +393,19 @@ export default function App() {
 
 const styles: Record<string, React.CSSProperties> = {
   root: {
-    minHeight: '100vh',
+    position: 'relative',
     background: '#1a3d28',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: '32px 16px',
-    gap: '32px',
-    overflowX: 'hidden',
+    justifyContent: 'flex-start',
+    overflow: 'hidden',
   },
+
 
   title: {
     fontFamily: 'Georgia, "Times New Roman", serif',
-    fontSize: '2.6rem',
+    fontSize: 'clamp(1.8rem, 8vw, 2.6rem)',
     fontWeight: '700',
     color: '#d4a843',
     letterSpacing: '0.04em',
@@ -359,23 +416,28 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: '28px',
     width: '100%',
-    maxWidth: '480px',
+    maxWidth: '520px',
+  },
+
+  tableBottom: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+    width: '100%',
+    flexShrink: 0,
   },
 
   handSection: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: '14px',
     width: '100%',
-    overflowX: 'auto',
   },
 
   handLabel: {
     fontFamily: '"Courier New", Courier, monospace',
-    fontSize: '0.7rem',
+    fontSize: 'clamp(0.7rem, 1.5vw, 0.95rem)',
     fontWeight: '600',
     letterSpacing: '0.25em',
     color: 'rgba(255,255,255,0.45)',
@@ -384,14 +446,18 @@ const styles: Record<string, React.CSSProperties> = {
 
   cardsRow: {
     display: 'flex',
-    gap: '10px',
+    gap: 'min(10px, 2.5vw)',
     alignItems: 'flex-start',
+    overflowX: 'auto',
+    width: '100%',
+    justifyContent: 'center',
+    paddingBottom: '4px',
   },
 
   card: {
     position: 'relative',
-    width: '80px',
-    height: '112px',
+    width: 'min(110px, 22vw, 15vh)',
+    height: 'min(154px, 31vw, 21vh)',
     background: '#fff',
     borderRadius: '10px',
     boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
@@ -400,8 +466,8 @@ const styles: Record<string, React.CSSProperties> = {
 
   cardFaceDown: {
     position: 'relative',
-    width: '80px',
-    height: '112px',
+    width: 'min(110px, 22vw, 15vh)',
+    height: 'min(154px, 31vw, 21vh)',
     background: '#163324',
     borderRadius: '10px',
     border: '2px dashed rgba(255,255,255,0.22)',
@@ -442,14 +508,14 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   cornerRank: {
-    fontSize: '0.8rem',
+    fontSize: 'clamp(0.65rem, 2vw, 1rem)',
     fontWeight: '800',
     fontFamily: 'Georgia, serif',
     lineHeight: 1,
   },
 
   cornerSuit: {
-    fontSize: '0.65rem',
+    fontSize: 'clamp(0.55rem, 1.6vw, 0.8rem)',
     lineHeight: 1,
     marginTop: '1px',
   },
@@ -459,7 +525,7 @@ const styles: Record<string, React.CSSProperties> = {
     top: '50%',
     left: '50%',
     transform: 'translate(-50%, -50%)',
-    fontSize: '2.2rem',
+    fontSize: 'clamp(1.6rem, 5vw, 2.8rem)',
     lineHeight: 1,
     userSelect: 'none',
   },
@@ -468,12 +534,20 @@ const styles: Record<string, React.CSSProperties> = {
     background: 'rgba(0,0,0,0.45)',
     color: 'rgba(255,255,255,0.85)',
     fontFamily: '"Courier New", Courier, monospace',
-    fontSize: '0.75rem',
+    fontSize: 'clamp(0.7rem, 1.4vw, 0.9rem)',
     fontWeight: '700',
     letterSpacing: '0.05em',
-    padding: '4px 14px',
+    padding: '5px 18px',
     borderRadius: '999px',
     border: '1px solid rgba(255,255,255,0.1)',
+  },
+
+  handsGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 'clamp(14px, 2.5vh, 28px)',
+    width: '100%',
   },
 
   divider: {
@@ -483,22 +557,32 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   aiBar: {
-    padding: '12px 28px',
+    padding: '18px 20px',
+    minHeight: '56px',
     border: '1px solid rgba(212,168,67,0.5)',
     borderRadius: '8px',
     background: 'rgba(0,0,0,0.3)',
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    gap: '10px',
   },
 
   aiBarText: {
     fontFamily: '"Courier New", Courier, monospace',
-    fontSize: '0.72rem',
+    fontSize: 'clamp(0.72rem, 1.4vw, 0.95rem)',
     fontWeight: '700',
     letterSpacing: '0.2em',
     color: 'rgba(255,255,255,0.6)',
     textTransform: 'uppercase',
+    flex: 1,
+    textAlign: 'center',
+  },
+
+  aiBarLabel: {
+    color: 'rgba(255,255,255,0.4)',
+    letterSpacing: '0.2em',
   },
 
   aiBarAction: {
@@ -506,27 +590,46 @@ const styles: Record<string, React.CSSProperties> = {
     letterSpacing: '0.25em',
   },
 
+  algoDropdown: {
+    background: 'transparent',
+    border: '1px solid rgba(212,168,67,0.4)',
+    borderRadius: '6px',
+    color: '#d4a843',
+    fontFamily: '"Courier New", Courier, monospace',
+    fontSize: '0.65rem',
+    fontWeight: '700',
+    letterSpacing: '0.1em',
+    padding: '8px 10px',
+    minHeight: '36px',
+    cursor: 'pointer',
+    outline: 'none',
+    flexShrink: 0,
+  },
+
   actionsCol: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '10px',
+    gap: '12px',
     alignItems: 'center',
+    width: '100%',
   },
 
   actionsRow: {
     display: 'flex',
-    gap: '10px',
+    gap: '12px',
+    width: '100%',
   },
 
   actionBtn: {
-    width: '120px',
-    padding: '12px 4px',
+    flex: 1,
+    padding: '18px 4px',
+    minHeight: '56px',
     background: 'transparent',
     border: '1px solid rgba(212,168,67,0.45)',
-    borderRadius: '8px',
+    borderRadius: '10px',
     color: 'rgba(255,255,255,0.85)',
     fontFamily: '"Courier New", Courier, monospace',
-    fontSize: '0.68rem',
+    fontSize: 'clamp(0.78rem, 1.4vw, 1rem)',
     fontWeight: '700',
     letterSpacing: '0.18em',
     textTransform: 'uppercase',
@@ -535,14 +638,15 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   newGameBtn: {
-    width: '250px',
-    padding: '12px 4px',
+    width: '100%',
+    padding: '18px 4px',
+    minHeight: '56px',
     background: 'rgba(212,168,67,0.15)',
     border: '1px solid rgba(212,168,67,0.7)',
-    borderRadius: '8px',
+    borderRadius: '10px',
     color: '#d4a843',
     fontFamily: '"Courier New", Courier, monospace',
-    fontSize: '0.68rem',
+    fontSize: 'clamp(0.78rem, 1.4vw, 1rem)',
     fontWeight: '700',
     letterSpacing: '0.18em',
     textTransform: 'uppercase',

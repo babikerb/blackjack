@@ -2,8 +2,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 import requests
 import os
+from ai import recommend as ai_recommend
 
 app = FastAPI()
 
@@ -15,6 +17,18 @@ app.add_middleware(
 )
 
 CARD_API = "https://deckofcardsapi.com/api/deck"
+
+
+class RecommendRequest(BaseModel):
+    player_cards: list[str]
+    dealer_upcard: str
+    seen_cards: list[str]
+    method: str = "montecarlo"
+
+
+@app.post("/game/recommend")
+def recommend(req: RecommendRequest):
+    return ai_recommend(req.player_cards, req.dealer_upcard, req.seen_cards, req.method)
 
 
 @app.post("/game/stand")
